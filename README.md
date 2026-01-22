@@ -66,27 +66,20 @@ This project is intended as an **engine-level prototype**, not a complete game.
 ```bash
 npm install
 ```
-Development
+Run the server in development mode:
+
 npx tsx src/server/main.ts
 
 
-Client: http://localhost:3000
+Client:
 
-WebSocket: ws://localhost:8081
-
-Production Build & Run
-npx tsc
-node dist/server/main.js
-
-
-The production server serves:
-
-WebSocket API
-
-Static client
-
-Access via:
 http://localhost:3000
+
+
+WebSocket:
+
+ws://localhost:8081
+
 
 🎮 Controls
 
@@ -115,18 +108,21 @@ Client (client_render.html)
 Three.js WebGL renderer
 Stateless client that renders server state and sends input
 
-🤝 Support the Project
+## 🤝 Support the Project
 
 If you find this project useful and would like to support its development:
 
-Currency	Wallet Address
-Bitcoin (BTC)	bc1q3smxjtjesh3km3rl0y89nyg964esdjkkmtwyhm
-Ethereum (ETH)	0x891c40D9ac520DC6c8827eDD744ee15c472e88Ff
-USDT (TRC-20)	TJriJCkKnG8d6dh1tejmz79JtUvnNoRirc
+| Currency | Wallet Address |
+|--------|----------------|
+| **Bitcoin (BTC)** | `bc1q3smxjtjesh3km3rl0y89nyg964esdjkkmtwyhm` |
+| **Ethereum (ETH)** | `0x891c40D9ac520DC6c8827eDD744ee15c472e88Ff` |
+| **USDT (TRC-20)** | `TJriJCkKnG8d6dh1tejmz79JtUvnNoRirc` |
 
-Support is optional and appreciated ❤️
+Support is optional and greatly appreciated ❤️
+
 
 📄 License
 
 
 MIT License
+
