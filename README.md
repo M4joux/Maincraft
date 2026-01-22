@@ -47,7 +47,7 @@ This project is intended as an **engine-level prototype**, not a complete game.
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="screenshot/Screenshot.png" width="45%"/>
+  <img src="screenshot/screenshot.png" width="45%"/>
 </p>
 
 ---
@@ -65,7 +65,7 @@ This project is intended as an **engine-level prototype**, not a complete game.
 
 ```bash
 npm install
-
+```
 Development
 npx tsx src/server/main.ts
 
@@ -127,5 +127,6 @@ USDT (TRC-20)	TJriJCkKnG8d6dh1tejmz79JtUvnNoRirc
 Support is optional and appreciated ❤️
 
 📄 License
+
 
 MIT License
