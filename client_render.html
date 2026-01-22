@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Maincraft Multiplayer</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #87CEEB;
+        }
+
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+        }
+
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        #crosshair::before {
+            top: 9px;
+            left: 0;
+            width: 20px;
+            height: 2px;
+        }
+
+        #crosshair::after {
+            top: 0;
+            left: 9px;
+            width: 2px;
+            height: 20px;
+        }
+
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            pointer-events: none;
+            color: white;
+            font-family: monospace;
+            font-size: 14px;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        .key {
+            display: inline-block;
+            padding: 2px 5px;
+            border: 1px solid #aaa;
+            border-radius: 3px;
+            font-size: 12px;
+            margin: 0 2px;
+        }
+
+        .nametag {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-family: sans-serif;
+            font-size: 12px;
+            pointer-events: none;
+            transform: translate(-50%, -100%);
+            white-space: nowrap;
+        }
+
+        #error-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            color: red;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            font-family: sans-serif;
+        }
+    </style>
+    <script
+        type="importmap"> { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } } </script>
+</head>
+
+<body>
+    <div id="error-overlay">
+        <h1>An Error Occurred</h1>
+        <p id="error-msg"></p>
+        <button onclick="location.reload()">Reload</button>
+    </div>
+    <div id="crosshair"></div>
+    <div id="hud">
+        <div>MAINCRAFT BETA</div>
+        <div>Player: <span id="myName">Guest</span></div>
+        <div>Coords: <span id="coords">0, 0, 0</span></div>
+        <div>Health: <span id="hp" style="color:red; font-weight:bold;">20</span></div>
+        <div>Selected: <span id="inv">Stone (1)</span></div>
+        <div style="margin-top: 10px; opacity: 0.8;"><span class="key">L-Click</span> Atk/Break <span
+                class="key">R-Click</span> Place</div>
+        <div id="msg" style="color: #ffff00; margin-top: 5px; height: 20px;"></div>
+    </div>
+    <div id="nametags"></div>
+
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            document.getElementById('error-overlay').style.display = 'flex';
+            document.getElementById('error-msg').innerText = msg;
+            console.error(error);
+            return false;
+        };
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- TEXTURE ATLAS GENERATOR ---
+        // AA-4: Color & Material Readability
+        function createAtlas() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+
+            // Stone (0, 0) - Cool Gray
+            ctx.fillStyle = '#888'; ctx.fillRect(0, 0, 32, 32);
+            ctx.fillStyle = '#777'; ctx.fillRect(4, 4, 12, 12); ctx.fillRect(20, 20, 8, 8); // Noise details
+
+            // Dirt (32, 0) - Warm Brown
+            ctx.fillStyle = '#795548'; ctx.fillRect(32, 0, 32, 32);
+            ctx.fillStyle = '#5d4037'; ctx.fillRect(36, 4, 8, 8); ctx.fillRect(56, 20, 8, 8); // Noise details
+
+            // Grass Top (0, 32) - Brighter Green
+            ctx.fillStyle = '#66bb6a'; ctx.fillRect(0, 32, 32, 32);
+            ctx.fillStyle = '#43a047'; ctx.fillRect(4, 36, 4, 4); ctx.fillRect(24, 52, 6, 6); // Noise details
+
+            // Grass Side (32, 32) - Dirt Base + Green Lip
+            ctx.fillStyle = '#795548'; ctx.fillRect(32, 32, 32, 32); // Dirt Base
+            ctx.fillStyle = '#66bb6a'; ctx.fillRect(32, 32, 32, 8); // Green Top Lip
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.magFilter = THREE.NearestFilter;
+            tex.minFilter = THREE.NearestFilter;
+            return tex;
+        }
+
+        const atlasTexture = createAtlas();
+        const UV_SCALE = 0.5;
+
+        class ChunkMesher {
+            constructor(size) { this.size = size; }
+            mesh(voxels) {
+                const positions = [], normals = [], colors = [], uvs = [], indices = [];
+                const dims = [this.size, this.size, this.size];
+                const getVoxel = (x, y, z) => { if (x < 0 || x >= dims[0] || y < 0 || y >= dims[1] || z < 0 || z >= dims[2]) return 0; return voxels[x * dims[1] * dims[2] + y * dims[2] + z]; };
+                const texMap = { 1: { top: [0, 0.5], side: [0, 0.5], bottom: [0, 0.5] }, 2: { top: [0.5, 0.5], side: [0.5, 0.5], bottom: [0.5, 0.5] }, 3: { top: [0, 0], side: [0.5, 0], bottom: [0.5, 0.5] } };
+
+                for (let d = 0; d < 3; d++) {
+                    let u = (d + 1) % 3, v = (d + 2) % 3, x = [0, 0, 0], q = [0, 0, 0], mask = new Int32Array(dims[u] * dims[v]); q[d] = 1;
+                    for (x[d] = -1; x[d] < dims[d];) {
+                        let n = 0;
+                        for (x[v] = 0; x[v] < dims[v]; x[v]++) { for (x[u] = 0; x[u] < dims[u]; x[u]++) { const a = (x[d] >= 0) ? getVoxel(x[0], x[1], x[2]) : 0; const b = (x[d] < dims[d] - 1) ? getVoxel(x[0] + q[0], x[1] + q[1], x[2] + q[2]) : 0; mask[n++] = ((!!a) === (!!b)) ? 0 : ((!!a) ? a : -b); } }
+                        x[d]++; n = 0;
+                        for (let j = 0; j < dims[v]; j++) {
+                            for (let i = 0; i < dims[u];) {
+                                const c = mask[n];
+                                if (!!c) {
+                                    let w = 1; while (i + w < dims[u] && mask[n + w] === c) w++;
+                                    let h = 1, done = false; while (j + h < dims[v]) { for (let k = 0; k < w; k++) { if (mask[n + k + h * dims[u]] !== c) { done = true; break; } } if (done) break; h++; }
+                                    x[u] = i; x[v] = j;
+                                    const du = [0, 0, 0]; du[u] = w; const dv = [0, 0, 0]; dv[v] = h;
+                                    const faceNormal = [0, 0, 0]; faceNormal[d] = (c > 0) ? 1 : -1;
+                                    const type = Math.abs(c);
+                                    let uvBase = [0, 0];
+                                    if (texMap[type]) {
+                                        if (d === 1) uvBase = (c > 0) ? texMap[type].top : texMap[type].bottom;
+                                        else uvBase = texMap[type].side;
+                                    }
+                                    const ndx = positions.length / 3;
+                                    const p0 = [...x], p1 = [x[0] + du[0], x[1] + du[1], x[2] + du[2]], p2 = [x[0] + du[0] + dv[0], x[1] + du[1] + dv[1], x[2] + du[2] + dv[2]], p3 = [x[0] + dv[0], x[1] + dv[1], x[2] + dv[2]];
+                                    const u0 = uvBase[0], v0 = uvBase[1];
+                                    const u1 = u0 + 0.5; const v1 = v0 + 0.5;
+                                    const pushV = (vArr) => positions.push(vArr[0], vArr[1], vArr[2]);
+                                    if (c > 0) { pushV(p0); pushV(p1); pushV(p2); pushV(p3); uvs.push(u0, v0, u1, v0, u1, v1, u0, v1); for (let k = 0; k < 4; k++) normals.push(...faceNormal); }
+                                    else { pushV(p0); pushV(p3); pushV(p2); pushV(p1); uvs.push(u0, v0, u0, v1, u1, v1, u1, v0); for (let k = 0; k < 4; k++) normals.push(...faceNormal); }
+                                    for (let k = 0; k < 4; k++) colors.push(1, 1, 1);
+                                    indices.push(ndx, ndx + 1, ndx + 2, ndx, ndx + 2, ndx + 3);
+                                    for (let l = 0; l < h; l++) { for (let k = 0; k < w; k++) mask[n + k + l * dims[u]] = 0; }
+                                    i += w; n += w;
+                                } else { i++; n++; }
+                            }
+                        }
+                    }
+                }
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+                geometry.setIndex(indices);
+                geometry.computeBoundingSphere();
+                return geometry;
+            }
+        }
+
+        // --- AA-8: Advanced Player Controller (Solid Collisions) ---
+        class Player {
+            constructor(camera, domElement) {
+                this.camera = camera;
+                this.domElement = domElement;
+
+                // AA-1: Spawn Height Fix
+                this.pos = new THREE.Vector3(16, 20, 16); // Will be corrected by AA-7 logic
+                this.vel = new THREE.Vector3(0, 0, 0);
+
+                this.onGround = false;
+                this.speed = 4.5;
+                this.gravity = 18.0;
+                this.jumpForce = 7.0;
+
+                this.keys = { w: false, a: false, s: false, d: false, space: false };
+                this.euler = new THREE.Euler(0, 0, 0, 'YXZ');
+                this.isLocked = false;
+
+                // AA-8.1: Player AABB
+                this.width = 0.6;
+                this.height = 1.8;
+
+                this.setupInput();
+                this.myId = null;
+            }
+
+            setupInput() { document.addEventListener('keydown', (e) => this.onKey(e, true)); document.addEventListener('keyup', (e) => this.onKey(e, false)); document.addEventListener('click', () => { if (!this.isLocked) this.domElement.requestPointerLock(); }); document.addEventListener('mousemove', (e) => { if (this.isLocked) { this.euler.y -= e.movementX * 0.002; this.euler.x -= e.movementY * 0.002; this.euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.euler.x)); this.camera.quaternion.setFromEuler(this.euler); } }); document.addEventListener('pointerlockchange', () => this.isLocked = (document.pointerLockElement === this.domElement)); }
+            onKey(e, down) { switch (e.code) { case 'KeyW': this.keys.w = down; break; case 'KeyA': this.keys.a = down; break; case 'KeyS': this.keys.s = down; break; case 'KeyD': this.keys.d = down; break; case 'Space': this.keys.space = down; break; } }
+
+            update(dt, world) {
+                if (dt > 0.1) dt = 0.1;
+
+                // Apply Gravity
+                this.vel.y -= this.gravity * dt;
+
+                // Input Velocity
+                const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, this.euler.y, 0, 'YXZ'));
+                const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, this.euler.y, 0, 'YXZ'));
+                const inputVel = new THREE.Vector3();
+                if (this.keys.w) inputVel.add(forward);
+                if (this.keys.s) inputVel.sub(forward);
+                if (this.keys.d) inputVel.add(right);
+                if (this.keys.a) inputVel.sub(right);
+                if (inputVel.lengthSq() > 0) inputVel.normalize().multiplyScalar(this.speed);
+
+                // AA-8.2: Axis Separated Movement
+                // Move X
+                const dx = inputVel.x * dt;
+                if (dx !== 0) {
+                    if (!this.checkCollision(world, this.pos.x + dx, this.pos.y, this.pos.z)) {
+                        this.pos.x += dx;
+                    } else {
+                        // Slide? or Stop
+                    }
+                }
+
+                // Move Z
+                const dz = inputVel.z * dt;
+                if (dz !== 0) {
+                    if (!this.checkCollision(world, this.pos.x, this.pos.y, this.pos.z + dz)) {
+                        this.pos.z += dz;
+                    }
+                }
+
+                // Move Y
+                const dy = this.vel.y * dt;
+                this.onGround = false;
+                if (dy !== 0) {
+                    if (!this.checkCollision(world, this.pos.x, this.pos.y + dy, this.pos.z)) {
+                        this.pos.y += dy;
+                    } else {
+                        if (dy < 0) this.onGround = true; // Hit ground
+                        this.vel.y = 0;
+                        // Snap to integer logic could be here for stability
+                    }
+                }
+
+                // Jump
+                if (this.onGround && this.keys.space) {
+                    this.vel.y = this.jumpForce;
+                    this.onGround = false;
+                }
+
+                // Camera Follow
+                this.camera.position.copy(this.pos);
+                this.camera.position.y += 1.6; // Eye height
+            }
+
+            // AA-8.3: Solid Block Check AABB
+            checkCollision(world, x, y, z) {
+                const minX = Math.floor(x - this.width / 2);
+                const maxX = Math.floor(x + this.width / 2);
+                const minY = Math.floor(y);
+                const maxY = Math.floor(y + this.height);
+                const minZ = Math.floor(z - this.width / 2);
+                const maxZ = Math.floor(z + this.width / 2);
+
+                for (let ix = minX; ix <= maxX; ix++) {
+                    for (let iy = minY; iy < maxY; iy++) { // Check feet and head
+                        for (let iz = minZ; iz <= maxZ; iz++) {
+                            if (world.isSolid(ix, iy, iz)) return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            intersectsBox(bx, by, bz) {
+                const px = this.pos.x, py = this.pos.y, pz = this.pos.z;
+                const pl_min_x = px - 0.3, pl_max_x = px + 0.3;
+                const pl_min_y = py, pl_max_y = py + 1.8;
+                const pl_min_z = pz - 0.3, pl_max_z = pz + 0.3;
+                const bl_min_x = bx, bl_max_x = bx + 1;
+                const bl_min_y = by, bl_max_y = by + 1;
+                const bl_min_z = bz, bl_max_z = bz + 1;
+                return (pl_min_x < bl_max_x && pl_max_x > bl_min_x && pl_min_y < bl_max_y && pl_max_y > bl_min_y && pl_min_z < bl_max_z && pl_max_z > bl_min_z);
+            }
+        }
+
+        // ... Managers ...
+        class RemotePlayerManager { constructor(scene) { this.scene = scene; this.players = new Map(); this.geo = new THREE.BoxGeometry(0.6, 1.8, 0.6); this.mat = new THREE.MeshLambertMaterial({ color: 0xff0000 }); } addOrUpdate(id, pos, name) { if (!this.players.has(id)) { const mesh = new THREE.Mesh(this.geo, this.mat); this.scene.add(mesh); const el = document.createElement('div'); el.className = 'nametag'; el.innerText = name || "Unknown"; document.getElementById('nametags').appendChild(el); this.players.set(id, { mesh, el, pos: pos || { x: 0, y: 0, z: 0 } }); } const p = this.players.get(id); if (pos) { p.mesh.position.set(pos.x, pos.y + 0.9, pos.z); p.pos = pos; } if (name) p.el.innerText = name; } remove(id) { if (this.players.has(id)) { const p = this.players.get(id); this.scene.remove(p.mesh); p.el.remove(); this.players.delete(id); } } updateLabels(camera) { for (const p of this.players.values()) { const tempV = new THREE.Vector3(p.pos.x, p.pos.y + 2.2, p.pos.z); tempV.project(camera); const x = (tempV.x * .5 + .5) * window.innerWidth; const y = (-(tempV.y * .5) + .5) * window.innerHeight; if (tempV.z < 1) { p.el.style.left = x + 'px'; p.el.style.top = y + 'px'; p.el.style.display = 'block'; } else { p.el.style.display = 'none'; } } } }
+        class MobManager { constructor(scene) { this.scene = scene; this.mobs = new Map(); this.geo = new THREE.BoxGeometry(0.8, 0.8, 0.8); this.mat = new THREE.MeshLambertMaterial({ color: 0x00ff00 }); } spawn(id, pos) { if (this.mobs.has(id)) return; const mesh = new THREE.Mesh(this.geo, this.mat); mesh.position.set(pos.x, pos.y + 0.4, pos.z); mesh.userData = { isMob: true, id }; this.scene.add(mesh); this.mobs.set(id, mesh); } update(id, pos) { const mesh = this.mobs.get(id); if (mesh) mesh.position.set(pos.x, pos.y + 0.4, pos.z); } remove(id) { const mesh = this.mobs.get(id); if (mesh) { this.scene.remove(mesh); this.mobs.delete(id); } } }
+
+        // ... World ...
+        class World {
+            constructor(scene, mesher, player, remoteMgr, mobMgr) {
+                this.scene = scene; this.mesher = mesher; this.player = player; this.remoteMgr = remoteMgr; this.mobMgr = mobMgr;
+                this.chunks = new Map(); this.renderRadius = 2; this.ws = null; this.nextChunkCoords = null; this.lastSend = 0;
+            }
+            connect() { this.ws = new WebSocket('ws://localhost:8081'); this.ws.binaryType = 'arraybuffer'; this.ws.onopen = () => this.onOpen(); this.ws.onmessage = (e) => this.onMessage(e); this.ws.onerror = (e) => console.error("WS Error", e); this.ws.onclose = () => console.log("WS Closed"); }
+            onOpen() { let pid = localStorage.getItem('maincraft_id') || ""; let name = localStorage.getItem('maincraft_name') || ""; if (!name) { name = prompt("Enter your name:", "Player") || "Player"; localStorage.setItem('maincraft_name', name); } this.ws.send(JSON.stringify({ type: 'AUTH', playerId: pid, name })); }
+            onMessage(event) { if (event.data instanceof ArrayBuffer) { if (this.nextChunkCoords) { const { cx, cz } = this.nextChunkCoords; this.createChunk(cx, cz, new Uint16Array(event.data)); this.nextChunkCoords = null; } } else { try { const msg = JSON.parse(event.data); if (msg.type === 'AUTH_OK') { this.player.myId = msg.playerId; localStorage.setItem('maincraft_id', msg.playerId); document.getElementById('myName').innerText = msg.name; } else if (msg.type === 'CHUNK_DATA') this.nextChunkCoords = { cx: msg.cx, cz: msg.cz }; else if (msg.type === 'BLOCK_UPDATE') this.setVoxel(msg.x, msg.y, msg.z, msg.blockId, false); else if (msg.type === 'PLAYER_JOIN' || msg.type === 'PLAYER_STATE') { if (msg.playerId !== this.player.myId) { this.remoteMgr.addOrUpdate(msg.playerId, msg.position); } } else if (msg.type === 'PLAYER_INFO') { if (msg.playerId !== this.player.myId) this.remoteMgr.addOrUpdate(msg.playerId, undefined, msg.name); } else if (msg.type === 'PLAYER_LEAVE') this.remoteMgr.remove(msg.playerId); else if (msg.type === 'MOB_SPAWN') this.mobMgr.spawn(msg.mobId, msg.position); else if (msg.type === 'MOB_STATE') if (msg.mobs) for (const m of msg.mobs) this.mobMgr.update(m.id, m.pos); else if (msg.type === 'MOB_DESPAWN' || msg.type === 'ENTITY_DEATH') if (msg.entityType === 'mob' || msg.type === 'MOB_DESPAWN') this.mobMgr.remove(msg.entityId || msg.mobId); else if (msg.type === 'PLAYER_DAMAGE') if (msg.playerId === this.player.myId) { document.getElementById('hp').innerText = msg.health; if (msg.health <= 0) document.getElementById('msg').innerText = "YOU DIED (Respawning...)"; } } catch (e) { console.error(e); } } }
+            requestChunk(cx, cz) { const key = `${cx},${cz}`; if (this.chunks.has(key)) return; if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'GET_CHUNK', x: cx, y: 0, z: cz })); }
+            createChunk(cx, cz, voxels) { const key = `${cx},${cz}`; if (this.chunks.has(key)) return; const geometry = this.mesher.mesh(voxels); const material = new THREE.MeshLambertMaterial({ map: atlasTexture, vertexColors: true }); const mesh = new THREE.Mesh(geometry, material); mesh.position.set(cx * 32, 0, cz * 32); this.scene.add(mesh); this.chunks.set(key, { cx, cz, voxels: voxels, mesh: mesh }); }
+            update(playerPos) { const cx = Math.floor(playerPos.x / 32), cz = Math.floor(playerPos.z / 32); const needed = new Set(); for (let x = cx - this.renderRadius; x <= cx + this.renderRadius; x++) { for (let z = cz - this.renderRadius; z <= cz + this.renderRadius; z++) { needed.add(`${x},${z}`); this.requestChunk(x, z); } } for (const [key, chunk] of this.chunks) { if (!needed.has(key)) { this.scene.remove(chunk.mesh); chunk.mesh.geometry.dispose(); this.chunks.delete(key); } } const now = performance.now(); if (now - this.lastSend > 100 && this.ws && this.ws.readyState === WebSocket.OPEN) { this.lastSend = now; this.ws.send(JSON.stringify({ type: 'PLAYER_STATE', position: this.player.pos })); } }
+            setVoxel(gx, gy, gz, id, isUserAction = true) { if (isUserAction) { if (this.ws) { const type = (id === 0) ? 'BREAK_BLOCK' : 'PLACE_BLOCK'; this.ws.send(JSON.stringify({ type, x: gx, y: gy, z: gz, blockId: id })); } return; } const cx = Math.floor(gx / 32), cz = Math.floor(gz / 32), lx = ((gx % 32) + 32) % 32, lz = ((gz % 32) + 32) % 32, key = `${cx},${cz}`, chunk = this.chunks.get(key); if (chunk && gy >= 0 && gy < 32) { chunk.voxels[lx * 32 * 32 + gy * 32 + lz] = id; this.scene.remove(chunk.mesh); chunk.mesh.geometry.dispose(); const geo = this.mesher.mesh(chunk.voxels); chunk.mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: atlasTexture, vertexColors: true })); chunk.mesh.position.set(cx * 32, 0, cz * 32); this.scene.add(chunk.mesh); } }
+            attackMob(mobId) { if (this.ws) this.ws.send(JSON.stringify({ type: 'ATTACK', targetType: 'mob', targetId: mobId })); }
+            getVoxel(gx, gy, gz) { const cx = Math.floor(gx / 32), cz = Math.floor(gz / 32), lx = ((gx % 32) + 32) % 32, lz = ((gz % 32) + 32) % 32, chunk = this.chunks.get(`${cx},${cz}`); if (!chunk) return 0; if (gy < 0 || gy >= 32) return 0; return chunk.voxels[lx * 32 * 32 + gy * 32 + lz]; } isSolid(gx, gy, gz) { return this.getVoxel(gx, gy, gz) !== 0; }
+        }
+
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x87CEEB);
+        // AA-5: Smart Fog
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 50);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); document.body.appendChild(renderer.domElement);
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8); hemiLight.position.set(0, 200, 0); scene.add(hemiLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6); dirLight.position.set(50, 200, 100); scene.add(dirLight);
+
+        const mesher = new ChunkMesher(32);
+        const remoteMgr = new RemotePlayerManager(scene);
+        const mobMgr = new MobManager(scene);
+        const player = new Player(camera, document.body);
+        const world = new World(scene, mesher, player, remoteMgr, mobMgr);
+        world.connect();
+
+        const raycaster = new THREE.Raycaster();
+        let selectedBlock = null, placeBlock = null, currentBlockId = 1, aimedMob = null;
+        const selectGeo = new THREE.BoxGeometry(1.01, 1.01, 1.01); const selectMat = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 }); const selectMesh = new THREE.LineSegments(new THREE.EdgesGeometry(selectGeo), selectMat); selectMesh.visible = false; scene.add(selectMesh);
+        document.addEventListener('keydown', (e) => { const blockNames = { 1: 'Stone', 2: 'Dirt', 3: 'Grass' }; if (['1', '2', '3'].includes(e.key)) { currentBlockId = parseInt(e.key); document.getElementById('inv').innerText = `${blockNames[currentBlockId]} (${currentBlockId})`; } });
+        document.addEventListener('mousedown', (e) => {
+            if (!player.isLocked) return;
+            if (e.button === 0) {
+                if (aimedMob) { world.attackMob(aimedMob); document.getElementById('msg').innerText = "HIT!"; setTimeout(() => document.getElementById('msg').innerText = "", 500); }
+                else if (selectedBlock) world.setVoxel(selectedBlock.x, selectedBlock.y, selectedBlock.z, 0, true);
+            }
+            if (e.button === 2 && placeBlock && !player.intersectsBox(placeBlock.x, placeBlock.y, placeBlock.z)) {
+                // AA-9: Collision Safety Check
+                // player.intersectsBox is already implemented! 
+                world.setVoxel(placeBlock.x, placeBlock.y, placeBlock.z, currentBlockId, true);
+            }
+        });
+        let lastTime = performance.now();
+        function animate() { requestAnimationFrame(animate); const now = performance.now(); const dt = (now - lastTime) / 1000; lastTime = now; world.update(player.pos); player.update(dt, world); remoteMgr.updateLabels(camera); raycaster.setFromCamera({ x: 0, y: 0 }, camera); const mobMeshes = Array.from(mobMgr.mobs.values()); const mobIntersects = raycaster.intersectObjects(mobMeshes); if (mobIntersects.length > 0 && mobIntersects[0].distance < 4) { aimedMob = mobIntersects[0].object.userData.id; } else { aimedMob = null; } if (!aimedMob) { const meshes = Array.from(world.chunks.values()).map(c => c.mesh); const intersects = raycaster.intersectObjects(meshes); if (intersects.length > 0 && intersects[0].distance < 6) { const hit = intersects[0]; const pIn = hit.point.clone().sub(hit.face.normal.clone().multiplyScalar(0.1)); selectedBlock = { x: Math.floor(pIn.x), y: Math.floor(pIn.y), z: Math.floor(pIn.z) }; const pOut = hit.point.clone().add(hit.face.normal.clone().multiplyScalar(0.1)); placeBlock = { x: Math.floor(pOut.x), y: Math.floor(pOut.y), z: Math.floor(pOut.z) }; selectMesh.position.set(selectedBlock.x + 0.5, selectedBlock.y + 0.5, selectedBlock.z + 0.5); selectMesh.visible = true; } else { selectedBlock = null; placeBlock = null; selectMesh.visible = false; } } else { selectMesh.visible = false; } renderer.render(scene, camera); document.getElementById('coords').innerText = `${Math.floor(player.pos.x)}, ${Math.floor(player.pos.y)}, ${Math.floor(player.pos.z)}`; }
+        animate();
+    </script>
+</body>
+
+</html>
