@@ -1,112 +1,107 @@
 # 🧱 Maincraft
 
-<p align="center">
-  <strong>Persistent Multiplayer Voxel Engine</strong><br/>
-  Built with Node.js, Python, and Three.js
-</p>
-
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Engine-Voxel-2c5364?style=flat-square"/>
-  <img src="https://img.shields.io/badge/Multiplayer-WebSocket-2c5364?style=flat-square"/>
-  <img src="https://img.shields.io/badge/Rendering-Three.js-2c5364?style=flat-square"/>
-  <img src="https://img.shields.io/badge/Server-Node.js-2c5364?style=flat-square"/>
-  <img src="https://img.shields.io/badge/WorldGen-Python-2c5364?style=flat-square"/>
-  <img src="https://img.shields.io/badge/Status-Prototype-2c5364?style=flat-square"/>
-  <img src="https://img.shields.io/badge/License-MIT-2c5364?style=flat-square"/>
-</p>
-
----
-
-## 📌 Overview
+![Node.js](https://img.shields.io/badge/Node.js-18+-green)
+![TypeScript](https://img.shields.io/badge/TypeScript-Yes-blue)
+![Python](https://img.shields.io/badge/Python-3.x-yellow)
+![Three.js](https://img.shields.io/badge/Three.js-WebGL-orange)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 **Maincraft** is a Minecraft-inspired **persistent multiplayer voxel engine prototype**  
 focused on **architecture, performance, and deterministic systems**.
-
-It demonstrates a full **client–server model** with:
-- server-authoritative state
-- procedural world generation
-- real-time multiplayer synchronization
-
-This project is intended as an **engine-level prototype**, not a complete game.
-
----
-
-## ✨ Features
-
-- 🌐 **Multiplayer** — Real-time player synchronization via WebSockets  
-- 💾 **Persistence** — World edits and player states saved to disk  
-- 🌍 **Procedural World Generation** — Python-based terrain generation (IPC)  
-- 🧠 **Greedy Meshing** — Optimized voxel geometry generation  
-- ⚔️ **Combat & AI** — Basic PvE gameplay with server-authoritative mobs  
-- 🎨 **Textures** — Procedural texture atlas with UV mapping  
-- 🔐 **Security** — Server-side validation and rate limiting  
 
 ---
 
 ## 📸 Screenshots
 
-<p align="center">
-  <img src="screenshot/screenshot.png" width="45%"/>
-</p>
+> In-game screenshots from the current development build
+
+![Gameplay Screenshot](screenshot/screenshot.png)
 
 ---
 
-## 🚀 Getting Started
+## 📌 Overview
 
-### Prerequisites
-- Node.js **v16+**
-- Python **3.x**
-- npm
+Maincraft demonstrates a complete client–server voxel game architecture with:
+
+- Server-authoritative logic
+- Persistent world state
+- Procedural terrain generation
+- Real-time multiplayer synchronization
+
+This project is built for learning, experimentation, and technical exploration.
 
 ---
 
-### Installation
+## 🚀 Installation
 
-```bash
-npm install
-```
+Install dependencies:
+
+    npm install
+
+---
+
+## 🧪 Development
+
 Run the server in development mode:
 
-npx tsx src/server/main.ts
-
+    npx tsx src/server/main.ts
 
 Client:
 
-http://localhost:3000
-
+    http://localhost:3000
 
 WebSocket:
 
-ws://localhost:8081
+    ws://localhost:8081
 
+---
 
-🎮 Controls
+## 🏗️ Production Build & Run
 
-W / A / S / D — Move
+Build the project:
 
-SPACE — Jump
+    npx tsc
 
-Left Click — Break Block / Attack
+Run the production server:
 
-Right Click — Place Block
+    node dist/server/main.js
 
-1 / 2 / 3 — Select Block Type
+The production server provides:
 
-ESC — Release Mouse Lock
+- WebSocket API
+- Static client hosting
 
-🏗️ Architecture
+Access:
 
-Server (src/server)
-Node.js WebSocket server handling all authoritative logic
+    http://localhost:3000
+
+---
+
+## 🎮 Controls
+
+- W / A / S / D — Move
+- SPACE — Jump
+- Left Click — Break Block / Attack
+- Right Click — Place Block
+- 1 / 2 / 3 — Select Block Type
+- ESC — Release Mouse Lock
+
+---
+
+## 🏗️ Architecture
+
+Server (src/server)  
+Node.js WebSocket server handling all authoritative logic  
 (physics, combat, persistence, validation)
 
-World Generator (engine_py)
+World Generator (engine_py)  
 Python-based procedural chunk generation via IPC
 
-Client (client_render.html)
-Three.js WebGL renderer
+Client (client_render.html)  
+Three.js WebGL renderer  
 Stateless client that renders server state and sends input
+
+---
 
 ## 🤝 Support the Project
 
@@ -120,9 +115,15 @@ If you find this project useful and would like to support its development:
 
 Support is optional and greatly appreciated ❤️
 
+---
 
-📄 License
-
+## 📄 License
 
 MIT License
+
+---
+
+Project repository:
+
+    https://github.com/M4joux/Maincraft
 
